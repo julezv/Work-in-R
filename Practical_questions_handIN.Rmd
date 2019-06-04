@@ -1,0 +1,134 @@
+---
+title: "Practical Questions"
+author: "YULIA"
+date: "3/3/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***PRACTICAL QUESTIONS***
+Gun Control. 
+
+```{r}
+#installation_needed  <- TRUE
+#loading_needed <- TRUE
+#package_list <- c('foreign', 'xtable', 'plm','gmm', 'AER','stargazer','readstata13', 'boot', 'arm', 'lmtest', 'sem', 'bdynsys', 'ivpack')
+#if(installation_needed){install.packages(package_list, repos='http://cran.us.r-project.org')}
+#if(loading_needed){lapply(package_list, require, character.only = TRUE)}
+
+# clear the global workspace
+
+rm(list=ls())
+library(AER)
+library(plm)
+data("Guns")
+```
+
+**3.1 PART 1**  
+**For this part we will focus on the coefficients and not the standard errors**    
+(you may use the default OLS standard errors assuming homoskedasticity for this part only).  
+
+**1. Make a table that summarizes the basic properties of all the variables in the data set.**  
+
+```{r}
+mydata <- pdata.frame(Guns,index = c("state","year"), drop.index = FALSE)
+#table(index(mydata), useNA = "ifany")
+summary(mydata)
+```
+**2. Perform a pooled OLS analysis, ignoring the panel properties of the data set and just treating all the data as iid. Report the results.**  
+
+
+
+Our main explanatory variable of interest is whether a state has a shall carry law, that is, a law that allows basically anyone to get a license to carry a gun around with them. So these are laws that encourage more guns on the street, not fewer. For every regression we will include the shall-carry law dummy variable as well as controls for the gender and racial makeup of the state's population, the population density, the state average income, and the states's prison population.  
+```{r}
+linear_model <- violent ~ law  + prisoners + male + density + cauc + afam + population + income
+summary(linear_model)
+#linear_model <- lm(violent ~. - murder -robbery - state - year, data = mydata)
+#summary(linear_model)
+
+naive_ols <- plm(linear_model, mydata, model ="pooling", index = c("state", "year"))
+summary(naive_ols)
+```
+
+**3. Now perform the Feasible Generalized Least Squares analysis of this panel with "classical" random effects at the state level.**  
+```{r}
+RE_fit <- plm(linear_model, data = mydata, model ="random", index = c("state", "year"))
+summary(RE_fit)
+```
+
+**4. Now perform a fixed effects analysis of the panel with fixed effects for the  state, estimated by both the "within" estimator and the "first differences" estimator.**     
+Do you see any major difference in the two estimators here?  
+Give some intuition for what you see.    
+
+
+*Fixed Effects*
+```{r}
+fixed_effects_fit <- plm(linear_model, mydata, model="within", effect = "individual", index = c("state", "year"))
+summary(fixed_effects_fit)
+```
+
+
+*First Differences*
+```{r}
+FD_fit <- plm(linear_model, mydata, model="fd", index = c("state", "year"))
+summary(FD_fit)
+```
+
+We can observe that R-Squared of the FE regression is larger since it preserves more information. The coefficients on male and population differ a lot in FE and FD.  
+
+
+**5. Now perform fixed effects analysis of the panel using the "within" estimator with state and year effects.**    
+Perform first differences analysis adding in dummies for the year. Do you see any major difference in the two procedures? Explain. 
+
+
+*Fixed Effects*
+```{r}
+twoways_fixed_effects_fit <- plm(linear_model, mydata , model="within", effect = "twoways", index = c("state", "year"))
+summary(twoways_fixed_effects_fit)
+```
+*First Differences*
+```{r}
+FD_fit_year <- plm(violent ~ law  + prisoners + male + density + cauc + afam + population + income + factor(year), mydata, model="fd" , index = c("state", "year"))
+summary(FD_fit_year)
+```
+
+Still large difference in coefficients is observed.  
+
+
+**3.2 PART 2**  
+**1. Compute the canonical White standard errors for this model and report the results.**  
+
+```{r}
+HC_coefs <- vcovHC(fixed_effects_fit, method = "white1")
+white_ses_state <- sqrt(diag(HC_coefs))
+print(white_ses_state)
+```
+**2. Now compute the canonical "clustered" standard errors with clustering at the state level (as in Arrelano 1987).**    
+
+```{r}
+HCV_coefs_state <- vcovHC(fixed_effects_fit, method = "arellano", cluster = "group")
+clustered_ses_state <- sqrt(diag(HCV_coefs_state))
+print(clustered_ses_state)
+```
+
+**3. Now compute the canonical "clustered" standard errors with clustering at the time unit (as in Arrelano 1987 but for T not N).**
+
+```{r}
+HCV_coefs_time <- vcovHC(fixed_effects_fit, method = "arellano", cluster = "time")
+clustered_ses_time <- sqrt(diag(HCV_coefs_time))
+print(clustered_ses_time)
+```
+**4. Now compute the Newey-West standard errors for panel data.**  
+
+```{r}
+NW_coefs <- vcovNW(fixed_effects_fit)
+NW_ses_state <- sqrt(diag(NW_coefs))
+print(NW_ses_state)
+```
+**5. Comment on the relative magnitude of these errors for the ?? on our key variable, the shall-carry law. Give some intuition for what you see.**  
+Arellano approach gives highest standard errors and NW lowest. 
+
+

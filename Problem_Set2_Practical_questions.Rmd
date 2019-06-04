@@ -1,0 +1,130 @@
+---
+title: "Problem Set2 Practical Questions"
+author: "YULIA"
+date: "3/20/2018"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#installation_needed  <- TRUE
+#loading_needed <- TRUE
+#package_list <- c('foreign', 'xtable', 'plm','gmm', 'AER','stargazer','readstata13', 'boot', 'arm', 'lmtest', 'sem', 'bdynsys', 'ivpack')
+#if(installation_needed){install.packages(package_list, repos='http://cran.us.r-project.org')}
+#if(loading_needed){lapply(package_list, require, character.only = TRUE)}
+
+# clear the global workspace
+
+library(foreign)
+library(ivpack)
+setwd("/Users/yuliav/Downloads/")
+my_data <- read.dta("fishdata.dta")
+#summary(my_data)
+
+```
+
+**1.Suppose you want to estimate the demand equation. You'd like to regress log of quantities in pounds of whiting per day on log of average daily price in US dollars per pound, dummies for day of the week, and control for weather on the shore. Do this via OLS.**  
+
+```{r}
+form.ols <- qty ~ pricelevel + rainy + cold + day1 +day2 +day3 +day4 
+demand_fit <- lm(form.ols, data = my_data)
+summary(demand_fit)
+```
+**2. Now do this demand analysis using stormy weather and mixed weather as instruments for price. Comment on the differences in the results.**  
+
+
+```{r}
+IV_weather_price_demand <- ivreg(qty ~ pricelevel + rainy + cold + day1 +day2 +day3 +day4  |  stormy + mixed + rainy + cold + day1 +day2 +day3 +day4, data = my_data, x= TRUE)
+summary(IV_weather_price_demand)
+```
+*Now price level has a higher negative effect on quantity demanded.*    
+
+
+**3. Do you think the sailing weather variables (stormy, mixed) give us a good instrument for price in the demand equation? Explain and justify your answer.**   
+*Stromy weather --> price --> demand*    
+*No, I believe that price may not be very affected by the sailing weather variables and so we may have an irrelevant instrument.Also there can be channels other than price through which weather can influence demand. Eg: Stromy weather in the sea --> people are unwilling to go to the fish market --> less demand*    
+*But in case stormy/mixed weather indeed influences demand through price only, the instrument should be fine.*  
+
+
+**4. Do you think the sailing weather variables are strong instruments for price? Examine the first stage F statistic. Compute the Anderson Rubin confidence interval for the effect of price on demand. Is there a weak instruments problem?**       
+ 
+```{r}
+first_stage_price_on_weather_demand <- lm(pricelevel ~ stormy + mixed + rainy + cold + day1 +day2 +day3 +day4 ,data=my_data)
+summary(first_stage_price_on_weather_demand)$fstatistic[1]
+```
+*F stat is 4.714 < 10 so we can worry about weak instrument problem.*  
+```{r}
+ar_ci <- anderson.rubin.ci(IV_weather_price_demand, conflevel = 0.95)
+ar_ci
+```
+*The confidence interval looks nice, hence no weak instrument problem.*  
+
+
+**5. Suppose you want to estimate the supply equation. You'd like to regress log of quantities in pounds of whiting per day on log of average daily price in US dollars per pound and control for sailing weather (stormy, mixed).Do this via OLS.**    
+
+
+```{r}
+form.ols <- qty ~ pricelevel + stormy + mixed 
+supply_fit <- lm(form.ols, data = my_data)
+summary(supply_fit)
+```
+
+**6. Now do this supply analysis using dummies for day of the week and weather on the shore as instruments for price. Comment on the differences in the results.**  
+
+```{r}
+IV_weather_price_supply <- ivreg(qty ~ pricelevel + stormy + mixed + day1 + day2 + day3 + day4  |  stormy + mixed + rainy + cold + day1 + day2 + day3 + day4, data = my_data, x= TRUE)
+summary(IV_weather_price_supply)
+```
+**7. Do you think these are good instruments for the supply equation? Explain and justify your answer.**    
+
+*Weather on shore may cause more/less people to come to fish market and hence influence the price for fish. If the price is higher sellers may be wiliing to supply more. However, in case of fish selling I do not think that there is a possibility to increase supply with higher price. The fish is already there and sailors can't just go out to the sea and get some more after observing a high price. Thus, I think the channel between weather on shore on some particular day and price for fish and supply of fish is weak. The instrument can be irrelevant.*    
+
+
+
+**8. Do you think these are strong instruments for price? Examine the first stage F statistic. Compute the Anderson Rubin confidence interval for the effect of price on demand. Is there a weak instruments problem?**
+```{r}
+first_stage_price_on_weather_supply <- lm(pricelevel ~ stormy + mixed + rainy + cold + day1 + day2 + day3 + day4 ,data=my_data)
+summary(first_stage_price_on_weather_supply)$fstatistic[1]
+```
+*F stat is 4.714 < 10 so we can worry about weak instrument problem. *  
+```{r}
+ar_ci <- anderson.rubin.ci(IV_weather_price_supply, conflevel = 0.95)
+ar_ci
+```
+*We get "Whole Real Line" as confidence interval which means that confidence set is empty.  Infinite confidence sets appear mainly when instruments are weak. In these cases, we have little or no information about the parameter of interest, which is correctly pointed out by these confidence sets. *      
+
+**9. Perform a simple nonparametric bootstrap to estimate the standard errors for the coefficient of price on quantity supplied, ignoring that this is time series data for now.**  
+
+```{r}
+library(boot)
+linear_model <- qty ~ pricelevel + stormy + mixed 
+coef_picker <- function(formula, data, indices) {
+  d <- data[indices,] # allows boot to select sample 
+  fit <- lm(formula, data=d)
+  return(summary(fit)$coef[1,1])
+} 
+results <- boot(data= my_data, statistic=coef_picker, R=1000, formula=linear_model)
+results
+```
+**10. Now perform a nonparametric block time-series bootstrap of the standard errors for the effect of price on quantity supplied, with a fixed block length of 5 periods. Check for sensitivity to the block length choice.**  
+
+```{r}
+linear_model <- qty ~ pricelevel + stormy + mixed 
+coef_picker <- function(formula, data, indices) {
+  d <- data[indices,] # allows boot to select sample 
+  fit <- lm(formula, data=d)
+  return(summary(fit)$coef[1,1])
+} 
+
+#bootstrap_price_quantiry <- tsboot(pricelevel, coef_picker, 1000, "fixed", l = 5)
+#options(digits=2)
+#mean.ts <- round((mean(bootstrap_price_quantiry$t)),digits=4)
+#ses.ts<- round(sd(bootstrap_lynx_mean$t),digits=4)
+#mean.ts
+#ses.ts
+
+```
